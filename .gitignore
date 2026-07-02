@@ -1,0 +1,11 @@
+target/
+
+# Java
+*.class
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
