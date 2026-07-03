@@ -1,31 +1,46 @@
 package com.shouvagya.redis.server;
 
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.Socket;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
+import com.shouvagya.redis.commands.CommandProcessor;
+import com.shouvagya.redis.datastore.DataStore;
+
+import java.io.PrintWriter;
+
 public class ClientHandler implements Runnable{
     
     private final Socket socket;
+    private final CommandProcessor commandProcessor;
 
-    public ClientHandler(Socket socket){
+    public ClientHandler(Socket socket, DataStore dataStore){
         this.socket=socket;
+        this.commandProcessor = new CommandProcessor(dataStore);
     }
 
     @Override
     public void run(){
 
         try{
+
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            PrintWriter writer = new PrintWriter(socket.getOutputStream(),true);
 
-            String line = reader.readLine();//waits till receives a terminating character, functions just like accept()
+            while(true){
+               
+                String line = reader.readLine();
 
-            //OutputStream output = socket.getOutputStream();
-            // System.out.println("Client connected : "+ socket.getInetAddress());
+                if(line==null){
+                    break;
+                }
 
-            System.out.println("Received: "+line);
+                System.out.println("Received: "+line);
+
+                String response = commandProcessor.process(line);
+
+                writer.println(response);
+            }
         }
         catch(Exception e){
             e.printStackTrace();
