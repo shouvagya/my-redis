@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 
 import com.shouvagya.redis.commands.CommandProcessor;
 import com.shouvagya.redis.datastore.DataStore;
+import com.shouvagya.redis.protocol.RespParser;
 
 import java.io.PrintWriter;
 
@@ -27,9 +28,11 @@ public class ClientHandler implements Runnable{
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             PrintWriter writer = new PrintWriter(socket.getOutputStream(),true);
 
+            RespParser parser = new RespParser();
+
             while(true){
-               
-                String line = reader.readLine();
+                
+                String line = parser.parse(reader);
 
                 if(line==null){
                     break;

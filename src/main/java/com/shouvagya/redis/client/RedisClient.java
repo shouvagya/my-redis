@@ -3,6 +3,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import com.shouvagya.redis.protocol.RespWriter;
 
 public class RedisClient {
 
@@ -18,6 +19,8 @@ public class RedisClient {
 
             BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
 
+            RespWriter respWriter = new RespWriter();
+
             while(true){
                 System.out.println("redis> ");
 
@@ -27,7 +30,7 @@ public class RedisClient {
                     break;
                 }
 
-                writer.println(command);
+                respWriter.write(writer,command);
                 String response = reader.readLine();
 
                 System.out.println(response);
