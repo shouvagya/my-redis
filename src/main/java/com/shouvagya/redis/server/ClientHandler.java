@@ -38,7 +38,7 @@ public class ClientHandler implements Runnable{
                     break;
                 }
 
-                System.out.println("Received: "+line);
+                System.out.print("Received: "+line);
 
                 String response = commandProcessor.process(line);
 
