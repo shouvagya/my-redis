@@ -9,10 +9,14 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.io.IOException;
 import com.shouvagya.redis.persistence.PersistenceSnapshot;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+
 
 public class DataStore{
 
-    private ConcurrentHashMap<String, String> store;
+    private ConcurrentHashMap<String, RedisObject> store;
 
     private final PersistenceManager persistenceManager = new PersistenceManager();
 
@@ -50,7 +54,7 @@ public class DataStore{
     public void set(String key, String value){
         writeLock.lock();
         try{
-            store.put(key,value);
+            store.put(key,new RedisObject(RedisType.STRING,value));
             //A normal SET removes the key's previous TTL
             expiryMap.remove(key);
 
@@ -66,11 +70,25 @@ public class DataStore{
         }
     }
 
+    private String getStringValue(String key){
+        RedisObject object = store.get(key);
+
+        if(object == null){
+            return null;
+        }
+
+        if(object.getType() != RedisType.STRING){
+            throw new IllegalStateException("WRONGTYPE: key does not contain a string");
+        }
+
+        return (String) object.getValue();
+    }
+
     public String get(String key){
         readLock.lock();
 
         try{
-            String value = store.get(key);
+            String value = getStringValue(key);
             if(value==null){
                 return null;
             }
@@ -89,7 +107,7 @@ public class DataStore{
         writeLock.lock();
         try{
             removeIfExpired(key);
-            return store.get(key);
+            return getStringValue(key);
         }
         finally{
             writeLock.unlock();
@@ -193,7 +211,7 @@ public class DataStore{
             return;
         }
 
-        String removedValue = store.remove(key);
+        RedisObject removedValue = store.remove(key);
         expiryMap.remove(key,expiryTime);
 
         //Persist the deletion so the so the expired key
@@ -221,7 +239,7 @@ public class DataStore{
                 Long expiryTime=expiryMap.get(key);
 
                 if(expiryTime!=null && expiryTime<=now){
-                    String removedValue=store.remove(key);
+                    RedisObject removedValue=store.remove(key);
                     expiryMap.remove(key,expiryTime);
 
                     if(removedValue!=null){
@@ -246,5 +264,231 @@ public class DataStore{
             writeLock.unlock();
         }
     }
+
+    public long lpush(String key, String... values){
+        if(values == null || values.length==0){
+            throw new IllegalStateException("LPUSH requires at least one value");
+        }
+
+        writeLock.lock();
+        try{
+            //Remove the key if first if its TTL has expired
+            removeIfExpired(key);
+
+            RedisObject object = store.get(key);
+            LinkedList<String> list;
+
+            if(object == null){
+                //Create a new list when the key doesn't exist
+                list = new LinkedList<>();
+                store.put(key, new RedisObject(RedisType.LIST, list));
+            }
+            else{
+                if(object.getType() != RedisType.LIST){
+                    throw new IllegalStateException("WRONGTYPE: key does not contain a list");
+                }
+
+                list= (LinkedList<String>) object.getValue();
+            }
+
+            //Inserting each argument at the beginning
+            for(String value:values){
+                list.addFirst(value);
+            }
+
+            persistSnapshot();
+            return list.size();
+        }
+        finally{
+            writeLock.unlock();
+        }
+    }
+
+    
+    public long rpush(String key, String... values) {
+        if (values == null || values.length == 0) {
+            throw new IllegalArgumentException("RPUSH requires at least one value");
+        }
+
+        writeLock.lock();
+        try{
+            removeIfExpired(key);
+
+            RedisObject object = store.get(key);
+            LinkedList<String> list;
+
+            if (object == null) {
+                list = new LinkedList<>();
+                store.put(key, new RedisObject(RedisType.LIST, list));
+            } 
+            else {
+                if (object.getType() != RedisType.LIST) {
+                    throw new IllegalStateException("WRONGTYPE: key does not contain a list");
+                }
+
+                list = (LinkedList<String>) object.getValue();
+            }
+
+            for (String value : values) {
+                list.addLast(value);
+            }
+
+            persistSnapshot();
+
+            return list.size();
+        } 
+        finally{
+            writeLock.unlock();
+        }
+    }
+
+    
+    public String lpop(String key) {
+        writeLock.lock();
+        try {
+            removeIfExpired(key);
+
+            RedisObject object = store.get(key);
+
+            // Return null if the key doesn't exist.
+            if (object == null) {
+                return null;
+            }
+
+            if (object.getType() != RedisType.LIST) {
+                throw new IllegalStateException("WRONGTYPE: key does not contain a list");
+            }
+
+            LinkedList<String> list = (LinkedList<String>) object.getValue();
+
+            String value = list.pollFirst();
+
+            // Redis removes the key when its list becomes empty.
+            if (list.isEmpty()) {
+                store.remove(key);
+                expiryMap.remove(key);
+            }
+
+            persistSnapshot();
+
+            return value;
+
+        } 
+        finally {
+            writeLock.unlock();
+        }
+    }
+
+    
+    public String rpop(String key) {
+        writeLock.lock();
+        try {
+            removeIfExpired(key);
+
+            RedisObject object = store.get(key);
+
+            if (object == null) {
+                return null;
+            }
+
+            if (object.getType() != RedisType.LIST) {
+                throw new IllegalStateException("WRONGTYPE: key does not contain a list");
+            }
+
+            LinkedList<String> list = (LinkedList<String>) object.getValue();
+
+            String value = list.pollLast();
+
+            // Remove the key if the list becomes empty.
+            if (list.isEmpty()) {
+                store.remove(key);
+                expiryMap.remove(key);
+            }
+
+            persistSnapshot();
+
+            return value;
+
+        }
+        finally {
+            writeLock.unlock();
+        }
+    }
+
+    public long llen(String key) {
+        writeLock.lock();
+        try {
+            removeIfExpired(key);
+
+            RedisObject object = store.get(key);
+
+            // Missing or expired key has length zero.
+            if (object == null) {
+                return 0;
+            }
+
+            if (object.getType() != RedisType.LIST) {
+                throw new IllegalStateException("WRONGTYPE: key does not contain a list");
+            }
+
+            LinkedList<String> list = (LinkedList<String>) object.getValue();
+            return list.size();
+        } 
+        finally {
+            writeLock.unlock();
+        }
+    }
+
+    
+    public List<String> lrange(String key, int start, int stop) {
+        writeLock.lock();
+        try{
+            removeIfExpired(key);
+
+            RedisObject object = store.get(key);
+
+            if (object == null) {
+                return new ArrayList<>();
+            }
+
+            if (object.getType() != RedisType.LIST) {
+                throw new IllegalStateException("WRONGTYPE: key does not contain a list");
+            }
+
+            LinkedList<String> list = (LinkedList<String>) object.getValue();
+
+            int size = list.size();
+
+            // Convert negative indices to positive indices.
+            int from = start < 0 ? size + start : start;
+            int to = stop < 0 ? size + stop : stop;
+
+            // Clamp the range to valid list boundaries.
+            from = Math.max(from, 0);
+            to = Math.min(to, size - 1);
+
+            // Return an empty list if the range is invalid.
+            if (from >= size || to < 0 || from > to) {
+                return new ArrayList<>();
+            }
+
+            // Stop is inclusive, so to + 1.
+            return new ArrayList<>(list.subList(from, to + 1));
+
+        } 
+        finally {
+            writeLock.unlock();
+        }
+    }
+
+
+
+
+
+
+
+
+
+
     
 }

@@ -84,6 +84,103 @@ public class CommandProcessor {
                 
                 return String.valueOf(ttl);
 
+            case "LPUSH":
+                if(parts.length < 3){
+                    //LPUSH requires a key and atleast one value
+                    return "ERROR: Usage -> LPUSH key value";
+                }
+
+                String key = parts[1];
+                
+                String[] values = new String[parts.length-2];
+                for(int i=2;i<parts.length;i++) values[i-2]=parts[i];
+
+                try{
+                    long length = dataStore.lpush(key, values);
+                    return String.valueOf(length);
+                }
+                catch(IllegalStateException e){
+                    return "ERROR: " + e.getMessage();
+                }
+
+            case "RPUSH":
+                if(parts.length < 3){
+                    //RPUSH requires a key and atleast one value
+                    return "ERROR: Usage -> LPUSH key value";
+                }
+
+                key = parts[1];
+                
+                values = new String[parts.length-2];
+                for(int i=2;i<parts.length;i++) values[i-2]=parts[i];
+
+                try{
+                    long length = dataStore.rpush(key, values);
+                    return String.valueOf(length);
+                }
+                catch(IllegalStateException e){
+                    return "ERROR: " + e.getMessage();
+                }
+            
+            
+            case "LPOP":
+                if(parts.length != 2) {
+                    return "ERROR: Usage -> LPOP key";
+                }
+
+                try{
+                    String poppedValue = dataStore.lpop(parts[1]);
+                    return poppedValue == null ? "(nil)" : poppedValue;
+                }
+                catch (IllegalStateException e) {
+                    return "ERROR: " + e.getMessage();
+                }
+            
+            
+            case "RPOP":
+                if(parts.length != 2) {
+                    return "ERROR: Usage -> RPOP key";
+                }
+
+                try{
+                    String poppedValue = dataStore.rpop(parts[1]);
+                    return poppedValue == null ? "(nil)" : poppedValue;
+                }
+                catch (IllegalStateException e) {
+                    return "ERROR: " + e.getMessage();
+                }
+            
+            case "LLEN":
+                if(parts.length != 2) {
+                    return "ERROR: Usage -> LLEN key";
+                }
+
+                try {
+                    return String.valueOf(dataStore.llen(parts[1]));
+                }
+                catch (IllegalStateException e) {
+                    return "ERROR: " + e.getMessage();
+                }
+            
+            
+            case "LRANGE":
+                if(parts.length != 4) {
+                    return "ERROR: Usage -> LRANGE key start stop";
+                }
+
+                try{
+                    int start = Integer.parseInt(parts[2]);
+                    int stop = Integer.parseInt(parts[3]);
+
+                    return String.valueOf(dataStore.lrange(parts[1], start, stop));
+                } 
+                catch (NumberFormatException e) {
+                    return "ERROR: start and stop must be integers";
+                } 
+                catch (Exception e) {
+                    return "ERROR: " + e.getMessage();
+                }
+
             default:
                 return "ERROR: Unknown command";
 
